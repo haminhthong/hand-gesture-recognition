@@ -6,7 +6,6 @@ import cv2
 
 class FingerNumber:
     def __init__(self):
-        self.finger_up = 0
         base_dir = os.path.dirname(os.path.abspath(__file__))
         self.hand_left_path = os.path.join(base_dir, "Image", "hand_left")
         self.hand_right_path = os.path.join(base_dir, "Image", "hand_right")
@@ -30,19 +29,19 @@ class FingerNumber:
             return "00000", None
             
         lm = landmarks.landmark  # Danh sách 21 điểm mốc
-        self.finger_up = 0
+        finger_code_value = 0
         if self.is_thumb_up(lm, 4, 3):
-            self.finger_up += 1
+            finger_code_value += 1
         if self.is_finger_up(lm, 8, 6):
-            self.finger_up += 10
+            finger_code_value += 10
         if self.is_finger_up(lm, 12, 10):
-            self.finger_up += 100
+            finger_code_value += 100
         if self.is_finger_up(lm, 16, 14):
-            self.finger_up += 1000
+            finger_code_value += 1000
         if self.is_finger_up(lm, 20, 18):
-            self.finger_up += 10000
+            finger_code_value += 10000
         
-        finger_code = f"{self.finger_up:05d}"  # Chuỗi 5 chữ số
+        finger_code = f"{finger_code_value:05d}"  # Chuỗi năm chữ số
         
         if hand_label == "Left":
             img_path = os.path.join(self.hand_left_path, f"{finger_code}.png")

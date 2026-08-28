@@ -167,7 +167,6 @@ class GestureDetector:
             current_center = self.get_hand_center(landmarks)
             move_direction = self.get_move_direction(current_center, self.prev_center)
             wave_timed_out = False
-            wave_timed_out = False
             
             if self.gestureTracking != "Start Wave":
                 self.gestureTracking = "Start Wave"

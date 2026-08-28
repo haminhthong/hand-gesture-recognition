@@ -50,13 +50,11 @@ class DraggableObject:
         return DraggableObject(x, y, self.width, self.height, self.color, self.name)
     
     def draw(self, frame):
-        color = self.color if not self.is_dragging else (0, 255, 255)  
-        cv2.rectangle(frame, (self.x, self.y), 
-                     (self.x + self.width, self.y + self.height), 
-                     color, -1)
-        cv2.rectangle(frame, (self.x, self.y), 
-                     (self.x + self.width, self.y + self.height), 
-                     (255, 255, 255), 2)
+        color = self.color if not self.is_dragging else (0, 255, 255)
+        top_left = (self.x, self.y)
+        bottom_right = (self.x + self.width, self.y + self.height)
+        cv2.rectangle(frame, top_left, bottom_right, color, -1)
+        cv2.rectangle(frame, top_left, bottom_right, (255, 255, 255), 2)
 
 
 class CircleObject(DraggableObject):
@@ -74,7 +72,7 @@ class CircleObject(DraggableObject):
         return distance <= self.radius
     
     def draw(self, frame):
-        """Vẽ hình tròn"""
+        """Vẽ hình tròn."""
         center_x = self.x + self.radius
         center_y = self.y + self.radius
         color = self.color if not self.is_dragging else (0, 255, 255)
@@ -83,7 +81,8 @@ class CircleObject(DraggableObject):
 
 
 class TriangleObject(DraggableObject):
-    """Vật thể hình tam giác"""
+    """Vật thể hình tam giác."""
+
     def __init__(self, x, y, size, color=(0, 255, 0), name="Triangle"):
         super().__init__(x, y, size, size, color, name)
         self.size = size
@@ -92,7 +91,7 @@ class TriangleObject(DraggableObject):
         return TriangleObject(x, y, self.size, self.color, self.name)
     
     def get_triangle_points(self):
-        """Lấy 3 điểm của tam giác"""
+        """Lấy ba đỉnh của tam giác."""
         center_x = self.x + self.size // 2
         top_y = self.y
         bottom_y = self.y + self.size
@@ -104,12 +103,12 @@ class TriangleObject(DraggableObject):
         return np.array([pt1, pt2, pt3], np.int32)
     
     def is_point_inside(self, px, py):
-        """Kiểm tra điểm có nằm trong tam giác không"""
+        """Kiểm tra một điểm có nằm trong tam giác hay không."""
         pts = self.get_triangle_points()
         return cv2.pointPolygonTest(pts, (float(px), float(py)), False) >= 0
     
     def draw(self, frame):
-        """Vẽ tam giác"""
+        """Vẽ hình tam giác."""
         pts = self.get_triangle_points()
         color = self.color if not self.is_dragging else (0, 255, 255)
         cv2.fillPoly(frame, [pts], color)
@@ -117,7 +116,8 @@ class TriangleObject(DraggableObject):
 
 
 class StarObject(DraggableObject):
-    """Vật thể hình ngôi sao"""
+    """Vật thể hình ngôi sao."""
+
     def __init__(self, x, y, size, color=(0, 255, 0), name="Star"):
         super().__init__(x, y, size, size, color, name)
         self.size = size
@@ -126,7 +126,7 @@ class StarObject(DraggableObject):
         return StarObject(x, y, self.size, self.color, self.name)
     
     def get_star_points(self):
-        """Lấy các điểm của ngôi sao 5 cánh"""
+        """Lấy các đỉnh của ngôi sao năm cánh."""
         center_x = self.x + self.size // 2
         center_y = self.y + self.size // 2
         outer_radius = self.size // 2
@@ -143,12 +143,12 @@ class StarObject(DraggableObject):
         return np.array(points, np.int32)
     
     def is_point_inside(self, px, py):
-        """Kiểm tra điểm có nằm trong ngôi sao không"""
+        """Kiểm tra một điểm có nằm trong ngôi sao hay không."""
         pts = self.get_star_points()
         return cv2.pointPolygonTest(pts, (float(px), float(py)), False) >= 0
     
     def draw(self, frame):
-        """Vẽ ngôi sao"""
+        """Vẽ hình ngôi sao."""
         pts = self.get_star_points()
         color = self.color if not self.is_dragging else (0, 255, 255)
         cv2.fillPoly(frame, [pts], color)
@@ -186,9 +186,7 @@ class DraggableObjectManager:
         return mid_x, mid_y
     
     def update(self, hand_landmarks, static_gesture, motion_gesture, frame_width, frame_height):
-        """
-        Cập nhật trạng thái kéo thả dựa trên cử chỉ
-        """
+        """Cập nhật trạng thái kéo thả dựa trên cử chỉ."""
         if hand_landmarks is None:
             self.prev_motion_gesture = None
             self.prev_gesture = None
