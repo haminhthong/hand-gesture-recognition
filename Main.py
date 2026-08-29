@@ -33,6 +33,8 @@ def overlay_image(background, overlay, x, y):
 
 
 class HandGestureApp:
+    """Điều phối camera, nhận diện cử chỉ và giao diện kéo thả."""
+
     def __init__(self, camera_index=0, width=640, height=480):
         self.width, self.height = width, height
         self.cap = self._open_camera(camera_index)
@@ -45,6 +47,7 @@ class HandGestureApp:
         self.missing_hand_frames = 0
 
     def _open_camera(self, camera_index):
+        """Mở camera yêu cầu hoặc thử các camera phổ biến làm phương án dự phòng."""
         for index in dict.fromkeys([camera_index, 0, 1]):
             cap = cv2.VideoCapture(index)
             if cap.isOpened():
@@ -54,7 +57,96 @@ class HandGestureApp:
             cap.release()
         raise RuntimeError("Không tìm thấy camera khả dụng.")
 
+    def _draw_gesture_labels(
+        self,
+        frame,
+        hand_landmarks,
+        static_result,
+        motion_result,
+    ):
+        """Hiển thị tên cử chỉ gần cổ tay."""
+        frame_height, frame_width = frame.shape[:2]
+        wrist = hand_landmarks.landmark[0]
+        x = int(wrist.x * frame_width)
+        y = max(25, int(wrist.y * frame_height) - 30)
+        static_gesture, static_color = static_result
+        motion_gesture, motion_color = motion_result
+
+        cv2.putText(
+            frame,
+            f"Static: {static_gesture}",
+            (x, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            static_color,
+            2,
+        )
+        cv2.putText(
+            frame,
+            f"Motion: {motion_gesture}",
+            (x, y + 25),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            motion_color,
+            2,
+        )
+
+    def _draw_finger_icons(self, frame, results):
+        """Hiển thị ảnh minh họa số ngón cho từng bàn tay."""
+        frame_width = frame.shape[1]
+        for hand_landmarks, handedness in zip(
+            results.multi_hand_landmarks,
+            results.multi_handedness,
+        ):
+            label = handedness.classification[0].label
+            _, icon = self.finger_counter.detect_gesture(hand_landmarks, label)
+            if icon is None:
+                continue
+
+            icon_height, icon_width = icon.shape[:2]
+            icon = cv2.resize(icon, (icon_width * 2, icon_height * 2))
+            icon_x = 10 if label == "Left" else frame_width - icon.shape[1] - 10
+            overlay_image(frame, icon, icon_x, 10)
+
+    def _handle_missing_hand(self, frame_width, frame_height):
+        """Đặt lại các trạng thái phụ thuộc vào bàn tay khi mất dấu."""
+        self.missing_hand_frames += 1
+        self.object_manager.update(
+            None,
+            "Unknown",
+            "Still",
+            frame_width,
+            frame_height,
+        )
+        self.shape_menu.update(
+            None,
+            "Unknown",
+            frame_width,
+            frame_height,
+            self.object_manager,
+        )
+        if self.missing_hand_frames == 5:
+            self.gesture_detector.reset()
+
+    def _draw_fps(self, frame):
+        """Tính và hiển thị số khung hình xử lý mỗi giây."""
+        now = time.perf_counter()
+        elapsed = now - self.previous_time
+        self.previous_time = now
+        fps = 1 / elapsed if elapsed > 0 else 0
+        frame_height, frame_width = frame.shape[:2]
+        cv2.putText(
+            frame,
+            f"FPS: {int(fps)}",
+            (frame_width - 120, frame_height - 15),
+            cv2.FONT_HERSHEY_PLAIN,
+            1.3,
+            (0, 0, 255),
+            2,
+        )
+
     def process_frame(self, frame):
+        """Xử lý một khung hình và trả về ảnh đã vẽ kết quả."""
         frame = self.detector.findHands(cv2.flip(frame, 1))
         frame_h, frame_w = frame.shape[:2]
         results = self.detector.results
@@ -65,42 +157,45 @@ class HandGestureApp:
             result = self.gesture_detector.detect_gesture(primary, mode="both")
             static_gesture, static_color = result["static"]
             (motion_gesture, motion_color), _ = result["motion"]
-            self.object_manager.update(primary, static_gesture, motion_gesture, frame_w, frame_h)
-            self.shape_menu.update(primary, static_gesture, frame_w, frame_h, self.object_manager)
+            self.object_manager.update(
+                primary,
+                static_gesture,
+                motion_gesture,
+                frame_w,
+                frame_h,
+            )
+            self.shape_menu.update(
+                primary,
+                static_gesture,
+                frame_w,
+                frame_h,
+                self.object_manager,
+            )
             if self.object_manager.visible:
-                self.object_manager.draw_cursor(frame, primary, frame_w, frame_h)
+                self.object_manager.draw_cursor(
+                    frame,
+                    primary,
+                    frame_w,
+                    frame_h,
+                )
 
-            wrist = primary.landmark[0]
-            x, y = int(wrist.x * frame_w), max(25, int(wrist.y * frame_h) - 30)
-            cv2.putText(frame, f"Static: {static_gesture}", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, static_color, 2)
-            cv2.putText(frame, f"Motion: {motion_gesture}", (x, y + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, motion_color, 2)
-
-            for hand_idx, landmarks in enumerate(results.multi_hand_landmarks):
-                if hand_idx >= len(results.multi_handedness):
-                    break
-                label = results.multi_handedness[hand_idx].classification[0].label
-                _, icon = self.finger_counter.detect_gesture(landmarks, label)
-                if icon is not None:
-                    ih, iw = icon.shape[:2]
-                    icon = cv2.resize(icon, (iw * 2, ih * 2))
-                    icon_x = 10 if label == "Left" else frame_w - icon.shape[1] - 10
-                    overlay_image(frame, icon, icon_x, 10)
+            self._draw_gesture_labels(
+                frame,
+                primary,
+                (static_gesture, static_color),
+                (motion_gesture, motion_color),
+            )
+            self._draw_finger_icons(frame, results)
         else:
-            self.missing_hand_frames += 1
-            self.object_manager.update(None, "Unknown", "Still", frame_w, frame_h)
-            self.shape_menu.update(None, "Unknown", frame_w, frame_h, self.object_manager)
-            if self.missing_hand_frames == 5:
-                self.gesture_detector.reset()
+            self._handle_missing_hand(frame_w, frame_h)
 
         self.object_manager.draw_all(frame)
         self.shape_menu.draw(frame, self.object_manager.visible)
-        now = time.perf_counter()
-        elapsed, self.previous_time = now - self.previous_time, now
-        fps = 1 / elapsed if elapsed > 0 else 0
-        cv2.putText(frame, f"FPS: {int(fps)}", (frame_w - 120, frame_h - 15), cv2.FONT_HERSHEY_PLAIN, 1.3, (0, 0, 255), 2)
+        self._draw_fps(frame)
         return frame
 
     def run(self):
+        """Chạy vòng lặp camera cho đến khi người dùng nhấn phím q."""
         try:
             while True:
                 ok, frame = self.cap.read()
