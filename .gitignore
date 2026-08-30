@@ -7,3 +7,5 @@ dist/
 .pytest_cache/
 .idea/
 .vscode/
+artifacts/*.json
+reports/
