@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from GestureDetector import GestureDetector
+from hand_gesture_controller.gesture_detector import GestureDetector
 
 
 def create_open_hand(center_x=0.5):
@@ -27,9 +27,9 @@ class GestureDetectorTests(unittest.TestCase):
 
     def test_wave_timeout_resets_tracking(self):
         detector = GestureDetector()
-        with patch("GestureDetector.time.perf_counter", return_value=100.0):
+        with patch("hand_gesture_controller.gesture_detector.time.perf_counter", return_value=100.0):
             detector.detect_motion_gesture(create_open_hand())
-        with patch("GestureDetector.time.perf_counter", return_value=103.0):
+        with patch("hand_gesture_controller.gesture_detector.time.perf_counter", return_value=103.0):
             (gesture, _), _ = detector.detect_motion_gesture(
                 create_open_hand(0.6)
             )

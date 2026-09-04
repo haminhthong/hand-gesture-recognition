@@ -7,5 +7,16 @@ dist/
 .pytest_cache/
 .idea/
 .vscode/
+.coverage
+htmlcov/
+
+# Artifacts & Benchmark reports
 artifacts/*.json
 reports/
+
+# Data & Privacy
+data/raw/
+data/private/
+*.csv
+*.mp4
+*.avi

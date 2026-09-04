@@ -1,24 +1,31 @@
+"""Mô-đun PerformanceMonitor theo dõi FPS và Latency (ms) theo cửa sổ trượt."""
+
 import json
+import logging
 import statistics
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, Deque, Optional, Union
+from typing import Deque, Dict, Optional, Union
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 class PerformanceMonitor:
-    """Bộ giám sát hiệu năng theo dõi Tốc độ khung hình (FPS) và Độ trễ xử lý (Latency ms) theo cửa sổ trượt.
+    """Bộ giám sát hiệu năng theo dõi Tốc độ khung hình (FPS) và Độ trễ xử lý (Latency ms).
 
     Attributes:
-        window_size (int): Số khung hình lưu giữ trong bộ nhớ đệm để tính trung bình trượt.
-        frame_times (Deque[float]): Đệm lưu khoảng thời gian giữa các khung hình (seconds).
-        latencies_ms (Deque[float]): Đệm lưu thời gian xử lý từng khung hình (milliseconds).
-        total_frames (int): Tổng số khung hình đã xử lý kể từ khi ứng dụng khởi chạy.
-        started_at (float): Thời điểm ứng dụng bắt đầu (perf_counter).
+        window_size (int): Số khung hình lưu giữ trong bộ nhớ đệm.
+        frame_times (Deque[float]): Đệm lưu khoảng thời gian giữa các khung hình (giây).
+        latencies_ms (Deque[float]): Đệm lưu thời gian xử lý từng khung hình (mili-giây).
+        total_frames (int): Tổng số khung hình đã xử lý.
+        started_at (float): Thời điểm bắt đầu đo.
     """
 
     def __init__(self, window_size: int = 120) -> None:
-        """Khởi tạo bộ giám sát hiệu năng.
+        """Khởi tạo PerformanceMonitor.
 
         Args:
             window_size: Kích thước cửa sổ trượt (mặc định 120 khung hình).
@@ -39,7 +46,7 @@ class PerformanceMonitor:
         """Ghi nhận mốc thời gian hoàn tất khung hình và đo độ trễ xử lý.
 
         Args:
-            processing_started_at: Thời điểm bắt đầu xử lý khung hình (từ time.perf_counter()).
+            processing_started_at: Thời điểm bắt đầu xử lý khung hình (time.perf_counter()).
         """
         now = time.perf_counter()
         if self.previous_frame_at is not None:
@@ -63,18 +70,29 @@ class PerformanceMonitor:
             return 0.0
         return statistics.fmean(self.latencies_ms)
 
-    def summary(self) -> Dict[str, Union[int, float]]:
-        """Xuất báo cáo tổng hợp thông số hiệu năng dưới dạng Dictionary.
+    def get_percentile_latencies(self) -> Dict[str, float]:
+        """Tính phân vị độ trễ P50, P95, P99 trong cửa sổ trượt."""
+        if not self.latencies_ms:
+            return {"p50": 0.0, "p95": 0.0, "p99": 0.0}
+        arr = np.array(list(self.latencies_ms))
+        return {
+            "p50": float(np.percentile(arr, 50)),
+            "p95": float(np.percentile(arr, 95)),
+            "p99": float(np.percentile(arr, 99)),
+        }
 
-        Returns:
-            Dict chứa tổng số frame, thời gian đã trôi qua, FPS trung bình và Latency ms trung bình.
-        """
+    def summary(self) -> Dict[str, Union[int, float]]:
+        """Xuất báo cáo tổng hợp thông số hiệu năng dưới dạng Dictionary."""
         elapsed = time.perf_counter() - self.started_at
+        percentiles = self.get_percentile_latencies()
         return {
             "total_frames": self.total_frames,
             "elapsed_seconds": round(elapsed, 3),
             "average_fps": round(self.average_fps, 2),
             "average_latency_ms": round(self.average_latency_ms, 2),
+            "p50_latency_ms": round(percentiles["p50"], 2),
+            "p95_latency_ms": round(percentiles["p95"], 2),
+            "p99_latency_ms": round(percentiles["p99"], 2),
         }
 
     def save(self, output_path: Union[str, Path]) -> None:
@@ -83,10 +101,13 @@ class PerformanceMonitor:
         Args:
             output_path: Đường dẫn tệp JSON đầu ra.
         """
-        path = Path(output_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(self.summary(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
+        try:
+            path = Path(output_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(self.summary(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            logger.info("Đã lưu báo cáo benchmark thành công: %s", path)
+        except OSError as error:
+            logger.error("Không thể lưu benchmark: %s", error)

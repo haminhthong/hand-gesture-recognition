@@ -1,12 +1,10 @@
 import unittest
 from types import SimpleNamespace
-import numpy as np
 
-from DraggableObject import (
+from hand_gesture_controller.object_manager import (
     CircleObject,
     DraggableObject,
     DraggableObjectManager,
-    ShapeMenu,
     StarObject,
     TriangleObject,
 )
@@ -42,6 +40,17 @@ class DraggableObjectTests(unittest.TestCase):
     def test_star_object_collision(self):
         star = StarObject(x=100, y=100, size=60)
         self.assertTrue(star.is_point_inside(130, 130))
+
+    def test_shape_templates_create_expected_full_size(self):
+        rectangle = DraggableObject(0, 0, 60, 50).create_full_size(10, 20)
+        circle = CircleObject(0, 0, 30).create_full_size(10, 20)
+        triangle = TriangleObject(0, 0, 60).create_full_size(10, 20)
+        star = StarObject(0, 0, 60).create_full_size(10, 20)
+
+        self.assertEqual((rectangle.width, rectangle.height), (100, 80))
+        self.assertEqual(circle.radius, 50)
+        self.assertEqual(triangle.size, 100)
+        self.assertEqual(star.size, 100)
 
     def test_object_manager_ema_smoothing(self):
         mgr = DraggableObjectManager(smooth_alpha=0.5)
@@ -80,6 +89,7 @@ class DraggableObjectTests(unittest.TestCase):
         # Cử chỉ Options -> Đổi màu
         original_color = obj.color
         mgr.update(hand, "Options", "Still", 1000, 1000)
+        self.assertNotEqual(original_color, obj.color)
 
         # Cử chỉ Stop -> Xóa vật thể
         mgr.update(hand, "Stop", "Still", 1000, 1000)

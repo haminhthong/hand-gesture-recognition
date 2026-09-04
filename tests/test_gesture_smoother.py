@@ -1,6 +1,6 @@
 import unittest
 
-from GestureSmoother import GestureSmoother
+from hand_gesture_controller.gesture_smoother import GestureSmoother
 
 
 class GestureSmootherTests(unittest.TestCase):

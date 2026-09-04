@@ -4,13 +4,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PerformanceMonitor import PerformanceMonitor
+from hand_gesture_controller.performance_monitor import PerformanceMonitor
 
 
 class PerformanceMonitorTests(unittest.TestCase):
     def test_summary_contains_reproducible_metrics(self):
         with patch(
-            "PerformanceMonitor.time.perf_counter",
+            "hand_gesture_controller.performance_monitor.time.perf_counter",
             side_effect=[0.0, 1.0, 2.0, 3.0],
         ):
             monitor = PerformanceMonitor(window_size=5)
