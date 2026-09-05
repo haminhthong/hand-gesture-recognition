@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .config import DEFAULT_THRESHOLDS, GestureThresholds
 from .gesture_features import (
+    FINGER_LANDMARKS,
     calculate_distance_2d,
     calculate_palm_size,
     is_finger_extended,
@@ -16,17 +17,25 @@ from .gesture_features import (
 
 @dataclass(frozen=True)
 class GestureResult:
-    """Kết quả phân loại cử chỉ kèm độ tin cậy rule-based.
+    """Kết quả phân loại cử chỉ kèm điểm độ khớp quy tắc hình học (rule_score) hoặc xác suất ML.
 
     Attributes:
         label (str): Nhãn cử chỉ được phân loại.
-        confidence (float): Độ tin cậy rule confidence [0.0, 1.0].
+        confidence (float): Độ tin cậy (alias tương thích ngược cho rule_score) [0.0, 1.0].
+        rule_score (float): Điểm độ khớp heuristic phản ánh margin điều kiện hình học [0.0, 1.0].
         source (str): Nguồn phân loại ("rule_based" hoặc "ml").
     """
 
     label: str
     confidence: float
+    rule_score: float = 0.0
     source: str = "rule_based"
+
+    def __post_init__(self) -> None:
+        if self.rule_score == 0.0 and self.confidence != 0.0:
+            object.__setattr__(self, "rule_score", self.confidence)
+        elif self.confidence == 0.0 and self.rule_score != 0.0:
+            object.__setattr__(self, "confidence", self.rule_score)
 
 
 class GestureDetector:
@@ -143,12 +152,39 @@ class GestureDetector:
         return "Move Left"
 
     def is_finger_up(
-        self, landmarks: List[Any], tip_id: int, joint_id: int, wrist_id: int = 0
+        self,
+        landmarks: List[Any],
+        tip_id: int,
+        joint_id: int,
+        mcp_id: Optional[int] = None,
+        wrist_id: int = 0,
     ) -> bool:
-        """Kiểm tra ngón tay duỗi ra dựa trên khoảng cách hoặc góc khớp."""
-        # Dùng kiểm tra góc khớp chuẩn xác
+        """Kiểm tra ngón tay duỗi ra dựa trên góc khớp chuẩn TIP -> PIP -> MCP.
+
+        Args:
+            landmarks: Danh sách các điểm mốc bàn tay.
+            tip_id: ID điểm mốc đầu ngón.
+            joint_id: ID điểm mốc khớp PIP (khớp giữa).
+            mcp_id: ID điểm mốc khớp MCP (khớp gốc). Nếu None, tự động tra cứu từ FINGER_LANDMARKS.
+            wrist_id: ID điểm mốc cổ tay (mặc định 0).
+        """
         pip_id = joint_id
-        mcp_id = joint_id + 1 if joint_id < 20 else joint_id
+        if mcp_id is None:
+            # Tra cứu chuẩn xác từ FINGER_LANDMARKS thay vì phỏng đoán joint_id + 1
+            mapping_by_tip = {
+                FINGER_LANDMARKS["index"]["tip"]: FINGER_LANDMARKS["index"]["mcp"],      # 8 -> 5
+                FINGER_LANDMARKS["middle"]["tip"]: FINGER_LANDMARKS["middle"]["mcp"],    # 12 -> 9
+                FINGER_LANDMARKS["ring"]["tip"]: FINGER_LANDMARKS["ring"]["mcp"],        # 16 -> 13
+                FINGER_LANDMARKS["pinky"]["tip"]: FINGER_LANDMARKS["pinky"]["mcp"],      # 20 -> 17
+            }
+            mapping_by_pip = {
+                FINGER_LANDMARKS["index"]["pip"]: FINGER_LANDMARKS["index"]["mcp"],      # 6 -> 5
+                FINGER_LANDMARKS["middle"]["pip"]: FINGER_LANDMARKS["middle"]["mcp"],    # 10 -> 9
+                FINGER_LANDMARKS["ring"]["pip"]: FINGER_LANDMARKS["ring"]["mcp"],        # 14 -> 13
+                FINGER_LANDMARKS["pinky"]["pip"]: FINGER_LANDMARKS["pinky"]["mcp"],      # 18 -> 17
+            }
+            mcp_id = mapping_by_tip.get(tip_id, mapping_by_pip.get(joint_id, max(0, joint_id - 1)))
+
         return is_finger_extended(
             landmarks,
             tip_id,
@@ -166,13 +202,37 @@ class GestureDetector:
         ) > calculate_distance_2d(landmarks[joint_id], landmarks[wrist_id])
 
     def _finger_states(self, landmarks: List[Any]) -> Tuple[bool, bool, bool, bool, bool]:
-        """Trả về trạng thái duỗi/gập của 5 ngón tay: [Cái, Trỏ, Giữa, Áp Út, Út]."""
+        """Trả về trạng thái duỗi/gập của 5 ngón tay: [Cái, Trỏ, Giữa, Áp Út, Út] sử dụng MCP chuẩn."""
         return (
-            self.is_thumb_up(landmarks, 4, 3),
-            self.is_finger_up(landmarks, 8, 6),
-            self.is_finger_up(landmarks, 12, 10),
-            self.is_finger_up(landmarks, 16, 14),
-            self.is_finger_up(landmarks, 20, 18),
+            self.is_thumb_up(
+                landmarks,
+                tip_id=FINGER_LANDMARKS["thumb"]["tip"],
+                joint_id=FINGER_LANDMARKS["thumb"]["ip"],
+            ),
+            self.is_finger_up(
+                landmarks,
+                tip_id=FINGER_LANDMARKS["index"]["tip"],
+                joint_id=FINGER_LANDMARKS["index"]["pip"],
+                mcp_id=FINGER_LANDMARKS["index"]["mcp"],
+            ),
+            self.is_finger_up(
+                landmarks,
+                tip_id=FINGER_LANDMARKS["middle"]["tip"],
+                joint_id=FINGER_LANDMARKS["middle"]["pip"],
+                mcp_id=FINGER_LANDMARKS["middle"]["mcp"],
+            ),
+            self.is_finger_up(
+                landmarks,
+                tip_id=FINGER_LANDMARKS["ring"]["tip"],
+                joint_id=FINGER_LANDMARKS["ring"]["pip"],
+                mcp_id=FINGER_LANDMARKS["ring"]["mcp"],
+            ),
+            self.is_finger_up(
+                landmarks,
+                tip_id=FINGER_LANDMARKS["pinky"]["tip"],
+                joint_id=FINGER_LANDMARKS["pinky"]["pip"],
+                mcp_id=FINGER_LANDMARKS["pinky"]["mcp"],
+            ),
         )
 
     def _is_on_off_start(
@@ -214,20 +274,30 @@ class GestureDetector:
         )
 
     def detect_static_gesture_result(self, landmarks: Any) -> GestureResult:
-        """Nhận diện cử chỉ tĩnh và trả về GestureResult có rule confidence.
+        """Nhận diện cử chỉ tĩnh và trả về GestureResult có rule_score / rule confidence.
+
+        Thứ tự ưu tiên (Precedence Table):
+        1. Fist: Không có ngón nào duỗi (fingers_up == 0)
+        2. Stop: Tất cả 5 ngón duỗi (fingers_up == 5)
+        3. Peace: Ngón trỏ & giữa duỗi, ngón cái gập (fingers_up == 2)
+        4. Pinch branch (d_norm(thumb, index) < select_distance):
+           a. Options: d_norm(middle, index) < options_distance (chụm 3 ngón)
+           b. Select: d_norm(middle, index) > 0.4 và fingers_up == 2 (chụm 2 ngón)
+           c. OK: fingers_up >= 3
+        5. Thumbs Up / Thumbs Down: Chỉ ngón cái duỗi (fingers_up == 1)
 
         Args:
-            landmarks: Đối tượng chứa 21 điểm mốc.
+            landmarks: Đối tượng chứa 21 điểm mốc MediaPipe.
 
         Returns:
-            GestureResult: Kết quả phân loại kèm độ tin cậy quy tắc.
+            GestureResult: Kết quả phân loại kèm điểm heuristic rule_score [0.0, 1.0].
         """
         if not landmarks or not hasattr(landmarks, "landmark"):
-            return GestureResult(label="Unknown", confidence=0.0, source="rule_based")
+            return GestureResult(label="Unknown", confidence=0.0, rule_score=0.0, source="rule_based")
 
         points = landmarks.landmark
         if len(points) < 21:
-            return GestureResult(label="Unknown", confidence=0.0, source="rule_based")
+            return GestureResult(label="Unknown", confidence=0.0, rule_score=0.0, source="rule_based")
 
         palm_sz = calculate_palm_size(landmarks)
         wrist = points[0]
@@ -240,35 +310,44 @@ class GestureDetector:
         thumb_up, index_up, middle_up, _, _ = finger_states
 
         gesture = "Unknown"
-        confidence = 0.70
+        rule_score = 0.50
 
         norm_d_thumb_index = normalized_distance(thumb_tip, index_tip, palm_sz)
         norm_d_middle_index = normalized_distance(middle_tip, index_tip, palm_sz)
 
         if fingers_up == 0:
             gesture = "Fist"
-            confidence = 0.95
+            rule_score = 0.95
         elif fingers_up == 5:
             gesture = "Stop"
-            confidence = 0.95
-        elif fingers_up == 2 and index_up and middle_up and not thumb_up:
+            rule_score = 0.95
+        elif fingers_up == 2 and index_up and middle_up and not thumb_up and norm_d_thumb_index >= self.thresholds.select_distance:
             gesture = "Peace"
-            confidence = 0.90
+            rule_score = 0.90
         elif norm_d_thumb_index < self.thresholds.select_distance:
+            pinch_margin = max(0.0, min(1.0, 1.0 - norm_d_thumb_index / max(self.thresholds.select_distance, 1e-6)))
             if norm_d_middle_index < self.thresholds.options_distance:
                 gesture = "Options"
-                confidence = 0.85
+                opt_margin = max(0.0, min(1.0, 1.0 - norm_d_middle_index / max(self.thresholds.options_distance, 1e-6)))
+                rule_score = round(0.70 + 0.25 * ((pinch_margin + opt_margin) / 2.0), 2)
             elif norm_d_middle_index > 0.4 and fingers_up == 2:
                 gesture = "Select"
-                confidence = 0.88
+                rule_score = round(0.70 + 0.25 * pinch_margin, 2)
             elif fingers_up >= 3:
                 gesture = "OK"
-                confidence = 0.82
+                rule_score = round(0.70 + 0.20 * pinch_margin, 2)
         elif fingers_up == 1 and self.is_thumb_up(points, 4, 2):
             gesture = "Thumbs Up" if thumb_tip.y < wrist.y else "Thumbs Down"
-            confidence = 0.85
+            y_diff = abs(thumb_tip.y - wrist.y)
+            thumb_margin = max(0.0, min(1.0, y_diff / max(palm_sz, 1e-6)))
+            rule_score = round(0.70 + 0.25 * thumb_margin, 2)
 
-        return GestureResult(label=gesture, confidence=confidence, source="rule_based")
+        return GestureResult(
+            label=gesture,
+            confidence=rule_score,
+            rule_score=rule_score,
+            source="rule_based",
+        )
 
     def detect_static_gesture(
         self, landmarks: Any
@@ -296,9 +375,12 @@ class GestureDetector:
             self.sTime = now
         else:
             direction = {"Move Left": "left", "Move Right": "right"}.get(move_direction)
-            if direction and direction != self.wave_direction:
-                self.wave_direction = direction
-                self.wave_count += 1
+            if direction:
+                if not self.wave_direction:
+                    self.wave_direction = direction
+                elif direction != self.wave_direction:
+                    self.wave_direction = direction
+                    self.wave_count += 1
 
         if now - self.sTime >= self.thresholds.wave_timeout_seconds:
             self._reset_wave()
@@ -306,8 +388,10 @@ class GestureDetector:
 
         self.prev_center = current_center
         if self.wave_count >= self.thresholds.wave_direction_changes:
+            self._reset_wave()
             return "Wave"
         return move_direction
+
 
     def detect_motion_gesture(
         self, landmarks: Any

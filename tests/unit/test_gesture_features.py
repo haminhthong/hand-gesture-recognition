@@ -62,12 +62,41 @@ def test_is_finger_extended():
     wrist = create_mock_point(0.0, 1.0)
     mcp = create_mock_point(0.0, 0.7)
     pip = create_mock_point(0.0, 0.4)
+    dip = create_mock_point(0.0, 0.25)
     tip = create_mock_point(0.0, 0.1)
 
-    landmarks = [wrist, None, None, None, None, None, mcp, None, tip]
-    landmarks[6] = mcp  # MCP
-    landmarks[7] = pip  # PIP
-    landmarks[8] = tip  # TIP
+    landmarks = [wrist] + [None] * 20
+    landmarks[0] = wrist
+    landmarks[5] = mcp  # Index MCP
+    landmarks[6] = pip  # Index PIP
+    landmarks[7] = dip  # Index DIP
+    landmarks[8] = tip  # Index TIP
 
-    # 180 deg extension
-    assert is_finger_extended(landmarks, tip_id=8, pip_id=7, mcp_id=6, min_angle_deg=140.0) is True
+    # 180 deg extension (TIP=8, PIP=6, MCP=5)
+    assert is_finger_extended(landmarks, tip_id=8, pip_id=6, mcp_id=5, min_angle_deg=140.0) is True
+
+
+def test_is_finger_extended_named():
+    from hand_gesture_controller.gesture_features import is_finger_extended_named
+
+    wrist = create_mock_point(0.0, 1.0)
+    mcp = create_mock_point(0.0, 0.7)
+    pip = create_mock_point(0.0, 0.4)
+    tip = create_mock_point(0.0, 0.1)
+
+    landmarks = [wrist] + [None] * 20
+    landmarks[0] = wrist
+    landmarks[5] = mcp  # Index MCP
+    landmarks[6] = pip  # Index PIP
+    landmarks[8] = tip  # Index TIP
+
+    assert is_finger_extended_named(landmarks, "index", min_angle_deg=140.0) is True
+
+    # Test folded finger (angle < 140)
+    folded_tip = create_mock_point(0.3, 0.6)
+    landmarks[8] = folded_tip
+    assert is_finger_extended_named(landmarks, "index", min_angle_deg=140.0) is False
+
+    with pytest.raises(ValueError, match="Tên ngón tay không hợp lệ"):
+        is_finger_extended_named(landmarks, "invalid_finger")
+

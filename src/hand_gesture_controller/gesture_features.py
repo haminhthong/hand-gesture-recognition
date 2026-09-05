@@ -1,7 +1,17 @@
 """Mô-đun trích xuất đặc trưng hình học chuẩn hóa theo kích thước lòng bàn tay (Palm Normalization)."""
 
 import math
-from typing import Any, List
+from typing import Any, Dict, List
+
+# Bảng tra cứu chuẩn hóa 21 điểm mốc MediaPipe Hands cho từng ngón tay
+FINGER_LANDMARKS: Dict[str, Dict[str, int]] = {
+    "thumb": {"tip": 4, "ip": 3, "mcp": 2, "cmc": 1},
+    "index": {"tip": 8, "pip": 6, "mcp": 5},
+    "middle": {"tip": 12, "pip": 10, "mcp": 9},
+    "ring": {"tip": 16, "pip": 14, "mcp": 13},
+    "pinky": {"tip": 20, "pip": 18, "mcp": 17},
+}
+
 
 
 def calculate_distance_2d(point_a: Any, point_b: Any) -> float:
@@ -120,3 +130,43 @@ def is_finger_extended(
     dist_pip_wrist = calculate_distance_2d(landmarks_list[pip_id], landmarks_list[0])
 
     return angle >= min_angle_deg and dist_tip_wrist > dist_pip_wrist
+
+
+def is_finger_extended_named(
+    landmarks_list: List[Any],
+    finger_name: str,
+    min_angle_deg: float = 140.0,
+) -> bool:
+    """Kiểm tra ngón tay duỗi thẳng theo tên ngón tay sử dụng bảng tra cứu FINGER_LANDMARKS.
+
+    Args:
+        landmarks_list: Danh sách 21 điểm mốc bàn tay.
+        finger_name: Tên ngón ("thumb", "index", "middle", "ring", "pinky").
+        min_angle_deg: Góc tối thiểu (độ).
+
+    Returns:
+        bool: True nếu ngón tay duỗi thẳng.
+    """
+    if finger_name not in FINGER_LANDMARKS:
+        raise ValueError(
+            f"Tên ngón tay không hợp lệ: '{finger_name}'. Hỗ trợ: {list(FINGER_LANDMARKS.keys())}"
+        )
+
+    mapping = FINGER_LANDMARKS[finger_name]
+    if finger_name == "thumb":
+        return is_finger_extended(
+            landmarks_list,
+            tip_id=mapping["tip"],
+            pip_id=mapping["ip"],
+            mcp_id=mapping["mcp"],
+            min_angle_deg=min_angle_deg,
+        )
+
+    return is_finger_extended(
+        landmarks_list,
+        tip_id=mapping["tip"],
+        pip_id=mapping["pip"],
+        mcp_id=mapping["mcp"],
+        min_angle_deg=min_angle_deg,
+    )
+

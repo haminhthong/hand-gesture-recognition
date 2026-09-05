@@ -6,7 +6,7 @@ import statistics
 import time
 from collections import deque
 from pathlib import Path
-from typing import Deque, Dict, Optional, Union
+from typing import Any, Deque, Dict, Optional, Union
 
 import numpy as np
 
@@ -41,6 +41,18 @@ class PerformanceMonitor:
         self.total_frames: int = 0
         self.started_at: float = time.perf_counter()
         self.previous_frame_at: Optional[float] = None
+        self.stage_latencies: Dict[str, Deque[float]] = {}
+
+    def record_stage(self, stage_name: str, latency_ms: float) -> None:
+        """Ghi nhận độ trễ xử lý của một giai đoạn cụ thể (ms).
+
+        Args:
+            stage_name: Tên chặng xử lý (ví dụ: 'mediapipe', 'gesture_logic', 'rendering').
+            latency_ms: Thời gian thực thi tính bằng mili-giây.
+        """
+        if stage_name not in self.stage_latencies:
+            self.stage_latencies[stage_name] = deque(maxlen=self.window_size)
+        self.stage_latencies[stage_name].append(latency_ms)
 
     def record_frame(self, processing_started_at: float) -> None:
         """Ghi nhận mốc thời gian hoàn tất khung hình và đo độ trễ xử lý.
@@ -81,11 +93,21 @@ class PerformanceMonitor:
             "p99": float(np.percentile(arr, 99)),
         }
 
-    def summary(self) -> Dict[str, Union[int, float]]:
-        """Xuất báo cáo tổng hợp thông số hiệu năng dưới dạng Dictionary."""
+    def summary(self) -> Dict[str, Any]:
+        """Xuất báo cáo tổng hợp thông số hiệu năng và stage latency dưới dạng Dictionary."""
         elapsed = time.perf_counter() - self.started_at
         percentiles = self.get_percentile_latencies()
-        return {
+
+        stages_summary: Dict[str, Dict[str, float]] = {}
+        for stage, lat_deque in self.stage_latencies.items():
+            if lat_deque:
+                arr = np.array(list(lat_deque))
+                stages_summary[stage] = {
+                    "mean_ms": round(float(np.mean(arr)), 2),
+                    "p95_ms": round(float(np.percentile(arr, 95)), 2),
+                }
+
+        result: Dict[str, Any] = {
             "total_frames": self.total_frames,
             "elapsed_seconds": round(elapsed, 3),
             "average_fps": round(self.average_fps, 2),
@@ -94,6 +116,10 @@ class PerformanceMonitor:
             "p95_latency_ms": round(percentiles["p95"], 2),
             "p99_latency_ms": round(percentiles["p99"], 2),
         }
+        if stages_summary:
+            result["stages"] = stages_summary
+        return result
+
 
     def save(self, output_path: Union[str, Path]) -> None:
         """Xuất báo cáo hiệu năng ra tệp định dạng JSON.

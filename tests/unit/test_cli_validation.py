@@ -25,3 +25,11 @@ def test_collect_landmarks_validation():
 
     with pytest.raises(ValueError, match="Số lượng mẫu"):
         collect_landmarks(subject_id="sub_01", session_id="ses_01", label="Fist", max_samples=0)
+
+
+def test_train_baseline_validation():
+    from tools.train_baseline import evaluate_baselines
+
+    with pytest.raises(FileNotFoundError, match="Không tìm thấy file dataset"):
+        evaluate_baselines("data/raw/non_existent_dataset.csv")
+

@@ -5,19 +5,26 @@ import numpy as np
 
 
 class LandmarkPreprocessor:
-    """Bộ tiền xử lý chuẩn hóa 21 điểm mốc 3D MediaPipe thành vector đặc trưng 63 chiều bất biến với vị trí và tỉ lệ.
+    """Bộ tiền xử lý chuẩn hóa 21 điểm mốc 3D MediaPipe thành vector đặc trưng 63 chiều bất biến với vị trí, tỉ lệ và góc xoay.
 
     Attributes:
         mirror_left_hand (bool): Nếu True, tự động lật tọa độ X của tay trái để đưa về cùng hệ quy chiếu với tay phải.
+        normalize_rotation (bool): Nếu True, xoay tọa độ trong mặt phẳng sao cho vector Cổ tay -> Middle MCP hướng thẳng đứng (-Y).
     """
 
-    def __init__(self, mirror_left_hand: bool = True) -> None:
+    def __init__(
+        self,
+        mirror_left_hand: bool = True,
+        normalize_rotation: bool = False,
+    ) -> None:
         """Khởi tạo LandmarkPreprocessor.
 
         Args:
             mirror_left_hand: Tự động lật trục X bàn tay trái về hệ quy chiếu bàn tay phải.
+            normalize_rotation: Chuẩn hóa xoay mặt phẳng bàn tay theo vector Cổ tay -> Middle MCP.
         """
         self.mirror_left_hand = mirror_left_hand
+        self.normalize_rotation = normalize_rotation
 
     def transform_landmarks_object(
         self,
@@ -53,7 +60,8 @@ class LandmarkPreprocessor:
         1. Dịch cổ tay (index 0) về gốc tọa độ (0, 0, 0).
         2. Tính palm_size = distance(wrist, middle_mcp) và chia các điểm mốc cho palm_size.
         3. Phản chiếu tay trái nếu mirror_left_hand = True.
-        4. Trải phẳng thành vector 63 chiều.
+        4. Chuẩn hóa góc xoay nếu normalize_rotation = True.
+        5. Trải phẳng thành vector 63 chiều.
 
         Args:
             coords: Mảng NumPy kích thước (21, 3) đại diện 21 điểm mốc (x, y, z).
@@ -80,5 +88,21 @@ class LandmarkPreprocessor:
         if self.mirror_left_hand and handedness == "Left":
             coords[:, 0] = -coords[:, 0]
 
-        # Step 4: Flatten vector
+        # Step 4: Optional In-plane Rotation Normalization
+        if self.normalize_rotation:
+            v_x = coords[9, 0]
+            v_y = coords[9, 1]
+            norm_v = np.hypot(v_x, v_y)
+            if norm_v > 1e-6:
+                current_angle = np.arctan2(v_y, v_x)
+                rot_angle = (-np.pi / 2.0) - current_angle
+                cos_a = np.cos(rot_angle)
+                sin_a = np.sin(rot_angle)
+                x_rot = cos_a * coords[:, 0] - sin_a * coords[:, 1]
+                y_rot = sin_a * coords[:, 0] + cos_a * coords[:, 1]
+                coords[:, 0] = x_rot
+                coords[:, 1] = y_rot
+
+        # Step 5: Flatten vector
         return coords.reshape(-1).astype(np.float32)
+

@@ -86,7 +86,7 @@ class HandGestureApp:
         self.width, self.height = width, height
         self.show_debug: bool = True
         self.cap = self._open_camera(camera_index)
-        self.detector = HandDetector(detectionCon=0.7, maxHands=2)
+        self.detector = HandDetector(detectionCon=0.7, maxHands=1)
         self.finger_counter = FingerNumber()
         self.gesture_detector = GestureDetector()
         self.event_mapper = GestureEventMapper()
